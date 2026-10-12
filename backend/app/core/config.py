@@ -51,7 +51,8 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> List[str]:
-        return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
+        origins = [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
+        return [origin if "://" in origin else f"https://{origin}" for origin in origins]
 
     @property
     def provider_order(self) -> List[str]:

@@ -1,0 +1,57 @@
+services:
+  - type: web
+    name: health-copilot-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    region: singapore
+    plan: starter
+    healthCheckPath: /healthz
+    disk:
+      name: health-copilot-files
+      mountPath: /var/data
+      sizeGB: 10
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: health-copilot-db
+          property: connectionString
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+      - key: ALLOWED_ORIGINS
+        fromService:
+          type: static
+          name: health-copilot-frontend
+          property: host
+      - key: AI_PROVIDER_ORDER
+        value: gemini,mistral,grok
+      - key: GEMINI_API_KEY
+        sync: false
+  - type: web
+    name: health-copilot-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_HOST
+        fromService:
+          type: web
+          name: health-copilot-api
+          property: host
+
+databases:
+  - name: health-copilot-db
+    databaseName: health_copilot
+    user: health_copilot
+    region: singapore
+    plan: basic-256mb
+    ipAllowList: []

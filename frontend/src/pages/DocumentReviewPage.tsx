@@ -99,8 +99,19 @@ export const DocumentReviewPage: React.FC = () => {
     }
   };
 
-  const handleDownload = () => {
-    window.open(`http://127.0.0.1:8000/api/v1/documents/${id}/download`, '_blank');
+  const handleDownload = async () => {
+    try {
+      const response = await apiClient.get(`/documents/${id}/download`, { responseType: 'blob' });
+      const downloadUrl = URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = doc?.original_filename || 'medical-document';
+      link.click();
+      URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      console.error('Failed to download medical document.', error);
+      alert('Could not download this document. Please try again.');
+    }
   };
 
   if (loading || !doc) {

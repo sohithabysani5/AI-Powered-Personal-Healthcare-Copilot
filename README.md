@@ -33,7 +33,7 @@
 ## 🛠️ Technology Stack
 
 - **Frontend:** React 18, Vite, TypeScript, Tailwind CSS, Lucide React icons, Recharts, React Router DOM, Axios.
-- **Backend:** Python 3.10+, FastAPI, Uvicorn, SQLAlchemy ORM, Pydantic v2, SQLite.
+- **Backend:** Python 3.10+, FastAPI, Uvicorn, SQLAlchemy ORM, Pydantic v2, SQLite locally and PostgreSQL on Render.
 - **Document & Clinical Engines:** PyMuPDF (fitz), Tesseract OCR (pytesseract), PIL, Pandas, NumPy.
 - **AI Integrations:** Adapters for xAI Grok, Mistral AI, and Google Gemini with normalized error handling and local fallback.
 
@@ -65,6 +65,17 @@ npm install
 npm run dev
 ```
 *Frontend runs at `http://localhost:5173`.*
+
+### Deploy to Render
+
+The root [`render.yaml`](render.yaml) Blueprint creates the FastAPI service, React static site, managed PostgreSQL database, and persistent disk for uploaded files. The database and disk require paid Render resources.
+
+1. Push this repository to a Git provider connected to your Render account.
+2. In the [Render Dashboard](https://dashboard.render.com), select **New > Blueprint**, connect the repository, and deploy the Blueprint.
+3. Enter a Gemini API key when prompted. The application generates its own signing secret; do not replace it with a checked-in value.
+4. Wait for both services to finish deploying, then open the `health-copilot-frontend` URL. The API health endpoint is `/healthz`.
+
+The Blueprint keeps the database private to Render and stores uploaded reports on the backend's persistent disk. Keep real patient data out of demo deployments; this project is not, by deployment alone, a guarantee of HIPAA or other regulatory compliance. Review access controls, retention, backups, provider agreements, and applicable privacy obligations before using real medical records.
 
 ---
 

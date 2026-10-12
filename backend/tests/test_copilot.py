@@ -11,7 +11,7 @@ os.environ["SECRET_KEY"] = "test-secret-key-32-character-minimum-requirement-123
 os.environ["DATABASE_URL"] = "sqlite:///./test_health_copilot.db"
 
 from app.main import app
-from app.database.session import Base, engine, SessionLocal
+from app.database.session import Base, engine, SessionLocal, normalize_database_url
 from app.medical.parser import extract_document_fields_deterministic
 from app.medical.local_explainer import generate_deterministic_summary
 from app.medical.fhir_exporter import export_fhir_bundle
@@ -19,6 +19,12 @@ from app.ai.provider_manager import ai_manager
 from app.ai.provider_base import ProviderResponse
 
 client = TestClient(app)
+
+
+def test_database_url_normalization():
+    assert normalize_database_url("postgres://user:pass@host/db") == "postgresql+psycopg://user:pass@host/db"
+    assert normalize_database_url("postgresql://user:pass@host/db") == "postgresql+psycopg://user:pass@host/db"
+    assert normalize_database_url("sqlite:///./health_copilot.db") == "sqlite:///./health_copilot.db"
 
 
 @pytest.fixture(autouse=True)
