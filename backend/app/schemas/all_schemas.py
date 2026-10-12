@@ -292,18 +292,49 @@ class WellnessResponse(BaseModel):
 
 # --- AI & Question Answering ---
 class HealthQARequest(BaseModel):
-    question: str
+    question: str = Field(min_length=1, max_length=2000)
     language: Optional[str] = "en"
+    conversation_id: Optional[int] = Field(default=None, gt=0)
 
 
 class HealthQAResponse(BaseModel):
     answer: str
-    cited_records: List[Dict[str, Any]] = []
+    cited_records: List[Dict[str, Any]] = Field(default_factory=list)
     provider_used: str
     model_used: Optional[str] = None
     failover_occurred: bool = False
     is_rule_based: bool = False
     disclaimer: str
+    conversation_id: int
+    message_id: int
+
+
+class AssistantConversationCreate(BaseModel):
+    title: str = Field(default="New conversation", min_length=1, max_length=160)
+
+
+class AssistantConversationResponse(BaseModel):
+    id: int
+    title: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AssistantMessageResponse(BaseModel):
+    id: int
+    conversation_id: int
+    role: str
+    content: str
+    provider_used: Optional[str] = None
+    is_rule_based: bool
+    cited_records: List[Dict[str, Any]] = Field(default_factory=list)
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 class ProviderStatusItem(BaseModel):

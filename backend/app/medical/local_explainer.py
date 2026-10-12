@@ -38,6 +38,7 @@ def generate_deterministic_summary(data: Dict[str, Any], language: str = "en") -
 
     findings_lines = []
     flagged_lines = []
+    unassessed_lines = []
     
     if labs:
         findings_lines.append("\n**Laboratory Measurements Recorded:**")
@@ -46,7 +47,7 @@ def generate_deterministic_summary(data: Dict[str, Any], language: str = "en") -
             val = test.get("value", "N/A")
             unit = test.get("unit") or ""
             ref = test.get("reference_range")
-            flag = test.get("flag", "Normal")
+            flag = test.get("flag") or ("Normal" if ref else "Not assessed")
 
             ref_str = f"(Reference Range: {ref})" if ref else "(Reference Range not provided in document)"
             flag_str = f"[{flag.upper()}]" if flag in ["High", "Low"] else ""
@@ -56,6 +57,8 @@ def generate_deterministic_summary(data: Dict[str, Any], language: str = "en") -
 
             if flag in ["High", "Low"]:
                 flagged_lines.append(f"• **{name}** is reported as **{flag}** relative to the source range ({ref or 'range unlisted'}).")
+            elif not ref or flag == "Not assessed":
+                unassessed_lines.append(f"• **{name}** cannot be compared because this report does not provide a reference range.")
 
     if meds:
         findings_lines.append("\n**Medications Identified:**")
@@ -90,7 +93,17 @@ def generate_deterministic_summary(data: Dict[str, Any], language: str = "en") -
 
     full_explanation = "\n".join(summary_lines + findings_lines + educational_notes)
     if flagged_lines:
-        full_explanation += "\n\n**Values Flagged by Document:**\n" + "\n".join(flagged_lines)
+        full_explanation += (
+            "\n\n**What Stands Out:**\n"
+            "These results are marked high or low against ranges printed in this report. "
+            "A flag is not a diagnosis.\n"
+            + "\n".join(flagged_lines)
+        )
+    if unassessed_lines:
+        full_explanation += (
+            "\n\n**Results Without a Comparison Range:**\n"
+            + "\n".join(unassessed_lines)
+        )
 
     disclaimer = (
         "\n\n*Educational Notice: This report explanation is generated locally using deterministic clinical rules. "

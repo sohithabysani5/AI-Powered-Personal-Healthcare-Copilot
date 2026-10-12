@@ -14,10 +14,11 @@ def normalize_database_url(database_url: str) -> str:
 
 
 # SQLite configuration with thread-check disabled for FastAPI async handlers
-connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
+database_url = normalize_database_url(settings.active_database_url)
+connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
 
 engine = create_engine(
-    normalize_database_url(settings.DATABASE_URL),
+    database_url,
     connect_args=connect_args,
     echo=False
 )

@@ -66,13 +66,19 @@ npm run dev
 ```
 *Frontend runs at `http://localhost:5173`.*
 
+### Supabase Database Setup
+
+The backend connects directly to Supabase PostgreSQL using SQLAlchemy. Create a Supabase project, copy its PostgreSQL **session pooler** connection URI, and configure it as `SUPABASE_DB_URL` in the backend's environment. Keep the database password private; the Supabase service-role key is not needed in the browser. At startup, SQLAlchemy creates missing application tables, including assistant conversations and messages. Existing SQLite data is not copied automatically.
+
+Chat history is stored in the application database and each conversation is restricted to its authenticated owner. On Render, enter `SUPABASE_DB_URL` in the API service's secret settings and set `ALLOWED_ORIGINS` to the deployed frontend origin. On Vercel, set `VITE_API_URL` to the deployed API base URL ending in `/api/v1`.
+
 ### Deploy to Render
 
-The root [`render.yaml`](render.yaml) Blueprint creates the FastAPI service, React static site, managed PostgreSQL database, and persistent disk for uploaded files. The database and disk require paid Render resources.
+The root [`render.yaml`](render.yaml) Blueprint creates the FastAPI service, React static site, and persistent disk for uploaded files. The disk requires a paid Render web-service plan. Supabase hosts the database.
 
 1. Push this repository to a Git provider connected to your Render account.
 2. In the [Render Dashboard](https://dashboard.render.com), select **New > Blueprint**, connect the repository, and deploy the Blueprint.
-3. Enter a Gemini API key when prompted. The application generates its own signing secret; do not replace it with a checked-in value.
+3. Enter the Supabase session-pooler URI and a Gemini API key when prompted. The application generates its own signing secret; do not replace it with a checked-in value.
 4. Wait for both services to finish deploying, then open the `health-copilot-frontend` URL. The API health endpoint is `/healthz`.
 
 The Blueprint keeps the database private to Render and stores uploaded reports on the backend's persistent disk. Keep real patient data out of demo deployments; this project is not, by deployment alone, a guarantee of HIPAA or other regulatory compliance. Review access controls, retention, backups, provider agreements, and applicable privacy obligations before using real medical records.

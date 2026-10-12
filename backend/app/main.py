@@ -12,6 +12,7 @@ from app.api.auth_routes import router as auth_router
 from app.api.document_routes import router as doc_router
 from app.api.health_routes import router as health_router
 from app.api.demo_routes import router as demo_router
+from app.api.assistant_routes import router as assistant_router
 
 # Initialize database tables
 Base.metadata.create_all(bind=engine)
@@ -23,19 +24,27 @@ app = FastAPI(
 )
 
 # CORS Middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+cors_kwargs = {
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+}
+
+if "*" in settings.cors_origins:
+    cors_kwargs["allow_origins"] = ["*"]
+    cors_kwargs["allow_credentials"] = False
+else:
+    cors_kwargs["allow_origins"] = settings.cors_origins
+    cors_kwargs["allow_credentials"] = True
+    cors_kwargs["allow_origin_regex"] = r"https://.*\.onrender\.com"
+
+app.add_middleware(CORSMiddleware, **cors_kwargs)
 
 # Mount Routers
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(doc_router, prefix="/api/v1")
 app.include_router(health_router, prefix="/api/v1")
 app.include_router(demo_router, prefix="/api/v1")
+app.include_router(assistant_router, prefix="/api/v1")
 
 
 @app.get("/")

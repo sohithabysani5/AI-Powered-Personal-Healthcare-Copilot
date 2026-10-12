@@ -1,5 +1,6 @@
 """Health Profile, Observations, Timeline, Medications, Reminders, and Wellness endpoints."""
 
+from datetime import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -8,7 +9,8 @@ from sqlalchemy import func
 from app.database.session import get_db
 from app.models.all_models import (
     User, HealthProfile, Observation, Medication, MedicationReminder,
-    TimelineEvent, WellnessEntry, Condition, MedicalDocument, VerificationStatus
+    TimelineEvent, WellnessEntry, Condition, MedicalDocument, VerificationStatus,
+    AssistantConversation, AssistantMessage
 )
 from app.schemas.all_schemas import (
     HealthProfileResponse, HealthProfileUpdate,
@@ -293,15 +295,37 @@ async def ask_health_assistant(
     db: Session = Depends(get_db)
 ):
     # Assemble relevant context strictly from current user's authorized records
-    docs = db.query(MedicalDocument).filter(MedicalDocument.user_id == current_user.id).all()
-    obs = db.query(Observation).filter(Observation.user_id == current_user.id).all()
-    meds = db.query(Medication).filter(Medication.user_id == current_user.id).all()
+    docs = (
+        db.query(MedicalDocument)
+        .filter(MedicalDocument.user_id == current_user.id)
+        .order_by(MedicalDocument.upload_date.desc())
+        .limit(10)
+        .all()
+    )
+    obs = (
+        db.query(Observation)
+        .filter(Observation.user_id == current_user.id)
+        .order_by(Observation.created_at.desc())
+        .limit(30)
+        .all()
+    )
+    meds = (
+        db.query(Medication)
+        .filter(Medication.user_id == current_user.id, Medication.is_active.is_(True))
+        .order_by(Medication.created_at.desc())
+        .limit(20)
+        .all()
+    )
 
     context_parts = []
     if docs:
         context_parts.append(f"Uploaded Medical Documents ({len(docs)}):")
-        for d in docs[:5]:
+        for d in docs:
             context_parts.append(f"- {d.original_filename} (Date: {d.document_date or 'Unknown'}, Category: {d.category.value})")
+            if d.simplified_explanation:
+                context_parts.append(f"  Report analysis: {d.simplified_explanation[:2500]}")
+            elif d.extracted_text:
+                context_parts.append(f"  Extracted report text: {d.extracted_text[:2500]}")
     if obs:
         context_parts.append(f"\nLaboratory & Health Measurements ({len(obs)}):")
         for o in obs[:15]:
@@ -315,9 +339,42 @@ async def ask_health_assistant(
 
     context_str = "\n".join(context_parts) if context_parts else "No records currently uploaded for this patient."
 
+    if qa_in.conversation_id:
+        conversation = (
+            db.query(AssistantConversation)
+            .filter(
+                AssistantConversation.id == qa_in.conversation_id,
+                AssistantConversation.user_id == current_user.id,
+            )
+            .first()
+        )
+        if conversation is None:
+            raise HTTPException(status_code=404, detail="Conversation not found.")
+    else:
+        conversation = AssistantConversation(user_id=current_user.id, title="New conversation")
+        db.add(conversation)
+        db.flush()
+
+    history_messages = (
+        db.query(AssistantMessage)
+        .filter(AssistantMessage.conversation_id == conversation.id)
+        .order_by(AssistantMessage.created_at.desc(), AssistantMessage.id.desc())
+        .limit(10)
+        .all()
+    )
+    conversation_history = [
+        {"role": message.role, "content": message.content}
+        for message in reversed(history_messages)
+    ]
+    if conversation.title == "New conversation":
+        question_title = qa_in.question.strip()
+        conversation.title = question_title[:157].rstrip() + ("..." if len(question_title) > 157 else "")
+    conversation.updated_at = datetime.utcnow()
+
     res = await ai_manager.answer_health_question(
         question=qa_in.question,
         user_records_context=context_str,
+        conversation_history=conversation_history,
         user_consent=current_user.consent_external_ai,
         local_only=current_user.local_only_mode,
         preferred_language=qa_in.language or current_user.preferred_language
@@ -327,6 +384,25 @@ async def ask_health_assistant(
     for d in docs[:3]:
         cited.append({"document_id": d.id, "filename": d.original_filename, "date": d.document_date})
 
+    user_message = AssistantMessage(
+        conversation_id=conversation.id,
+        role="user",
+        content=qa_in.question.strip(),
+        is_rule_based=False,
+        cited_records=[],
+    )
+    assistant_message = AssistantMessage(
+        conversation_id=conversation.id,
+        role="assistant",
+        content=res["answer"],
+        provider_used=res["provider_used"],
+        is_rule_based=res["is_rule_based"],
+        cited_records=cited,
+    )
+    db.add_all([user_message, assistant_message])
+    db.commit()
+    db.refresh(assistant_message)
+
     return HealthQAResponse(
         answer=res["answer"],
         cited_records=cited,
@@ -334,7 +410,9 @@ async def ask_health_assistant(
         model_used=res["model_used"],
         failover_occurred=res["failover_occurred"],
         is_rule_based=res["is_rule_based"],
-        disclaimer=res["disclaimer"]
+        disclaimer=res["disclaimer"],
+        conversation_id=conversation.id,
+        message_id=assistant_message.id,
     )
 
 

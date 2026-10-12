@@ -59,6 +59,7 @@ class User(Base):
     timeline_events = relationship("TimelineEvent", back_populates="user", cascade="all, delete-orphan")
     ai_interactions = relationship("AIInteractionLog", back_populates="user", cascade="all, delete-orphan")
     conditions = relationship("Condition", back_populates="user", cascade="all, delete-orphan")
+    assistant_conversations = relationship("AssistantConversation", back_populates="user", cascade="all, delete-orphan")
 
 
 class HealthProfile(Base):
@@ -264,3 +265,41 @@ class AIInteractionLog(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="ai_interactions")
+
+
+class AssistantConversation(Base):
+    __tablename__ = "assistant_conversations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(160), nullable=False, default="New conversation")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False, index=True)
+
+    user = relationship("User", back_populates="assistant_conversations")
+    messages = relationship(
+        "AssistantMessage",
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        order_by="AssistantMessage.created_at"
+    )
+
+
+class AssistantMessage(Base):
+    __tablename__ = "assistant_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(
+        Integer,
+        ForeignKey("assistant_conversations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    role = Column(String(20), nullable=False)
+    content = Column(Text, nullable=False)
+    provider_used = Column(String(50), nullable=True)
+    is_rule_based = Column(Boolean, nullable=False, default=False)
+    cited_records = Column(JSON, nullable=False, default=list)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    conversation = relationship("AssistantConversation", back_populates="messages")

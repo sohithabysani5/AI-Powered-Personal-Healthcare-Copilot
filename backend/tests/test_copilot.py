@@ -17,6 +17,8 @@ from app.medical.local_explainer import generate_deterministic_summary
 from app.medical.fhir_exporter import export_fhir_bundle
 from app.ai.provider_manager import ai_manager
 from app.ai.provider_base import ProviderResponse
+from app.ai.formatting import remove_heading_hashes
+from app.core.config import Settings
 
 client = TestClient(app)
 
@@ -25,6 +27,20 @@ def test_database_url_normalization():
     assert normalize_database_url("postgres://user:pass@host/db") == "postgresql+psycopg://user:pass@host/db"
     assert normalize_database_url("postgresql://user:pass@host/db") == "postgresql+psycopg://user:pass@host/db"
     assert normalize_database_url("sqlite:///./health_copilot.db") == "sqlite:///./health_copilot.db"
+
+
+def test_supabase_database_url_takes_precedence():
+    config = Settings(
+        DATABASE_URL="sqlite:///./local.db",
+        SUPABASE_DB_URL="postgresql://user:password@db.example.com/health"
+    )
+    assert config.active_database_url == "postgresql://user:password@db.example.com/health"
+
+
+def test_assistant_heading_hashes_are_removed():
+    assert remove_heading_hashes("## Summary\nA clear answer.\n### Next steps\nAsk your doctor.") == (
+        "Summary\nA clear answer.\nNext steps\nAsk your doctor."
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -126,6 +142,68 @@ def test_deterministic_medical_parser():
     assert len(expl["doctor_questions"]) > 0
 
 
+def test_parser_does_not_invent_missing_reference_ranges():
+    extracted = extract_document_fields_deterministic("Fasting Blood Glucose: 105 mg/dL")
+    glucose = next(item for item in extracted["lab_tests"] if item["test_name"] == "Fasting Blood Glucose")
+    assert glucose["reference_range"] is None
+    assert glucose["flag"] == "Not assessed"
+
+    explanation = generate_deterministic_summary(extracted)["explanation"]
+    assert "cannot be compared" in explanation
+    assert "70 - 100" not in explanation
+
+
+def test_assistant_conversation_history_is_user_scoped():
+    user1 = client.post("/api/v1/auth/register", json={
+        "email": "chat-owner@example.com",
+        "password": "Password123!",
+        "full_name": "Chat Owner"
+    })
+    assert user1.status_code == 200, user1.text
+    headers1 = {"Authorization": f"Bearer {user1.json()['access_token']}"}
+
+    answer = client.post("/api/v1/health/assistant/qa", headers=headers1, json={
+        "question": "What does hemoglobin do?"
+    })
+    assert answer.status_code == 200, answer.text
+    answer_data = answer.json()
+    conversation_id = answer_data["conversation_id"]
+    assert answer_data["message_id"] > 0
+
+    conversations = client.get("/api/v1/assistant/conversations", headers=headers1)
+    assert conversations.status_code == 200
+    assert conversations.json()[0]["id"] == conversation_id
+    assert "hemoglobin" in conversations.json()[0]["title"].lower()
+
+    messages = client.get(
+        f"/api/v1/assistant/conversations/{conversation_id}/messages",
+        headers=headers1
+    )
+    assert messages.status_code == 200
+    assert [message["role"] for message in messages.json()] == ["user", "assistant"]
+    assert messages.json()[0]["content"] == "What does hemoglobin do?"
+
+    user2 = client.post("/api/v1/auth/register", json={
+        "email": "chat-other@example.com",
+        "password": "Password123!",
+        "full_name": "Another User"
+    })
+    assert user2.status_code == 200, user2.text
+    headers2 = {"Authorization": f"Bearer {user2.json()['access_token']}"}
+    assert client.get(
+        f"/api/v1/assistant/conversations/{conversation_id}/messages",
+        headers=headers2
+    ).status_code == 404
+    assert client.delete(
+        f"/api/v1/assistant/conversations/{conversation_id}",
+        headers=headers2
+    ).status_code == 404
+    assert client.delete(
+        f"/api/v1/assistant/conversations/{conversation_id}",
+        headers=headers1
+    ).status_code == 204
+
+
 def test_fhir_bundle_exporter():
     user = {"id": 1, "full_name": "Sarah Jenkins"}
     profile = {"gender": "female", "date_of_birth": "1992-04-12", "abha_number": "91-1122-3344-5566"}
@@ -163,3 +241,28 @@ async def test_ai_failover_and_local_fallback(monkeypatch):
     )
     assert result["is_rule_based"] is True
     assert "Hemoglobin" in result["explanation"]
+
+
+@pytest.mark.asyncio
+async def test_answer_uses_recent_history_and_removes_heading_hashes(monkeypatch):
+    captured = {}
+
+    async def fake_execute(**kwargs):
+        captured.update(kwargs)
+        return {
+            "success": True,
+            "content": "## Your result\nIt matches the value we discussed.",
+            "provider_used": "test",
+            "model_used": "test-model",
+            "failover_occurred": False,
+        }
+
+    monkeypatch.setattr(ai_manager, "execute_with_failover", fake_execute)
+    result = await ai_manager.answer_health_question(
+        question="Can you explain it again?",
+        user_records_context="Hemoglobin: 14.2 g/dL",
+        conversation_history=[{"role": "user", "content": "What is hemoglobin?"}],
+    )
+
+    assert "What is hemoglobin?" in captured["user_prompt"]
+    assert result["answer"] == "Your result\nIt matches the value we discussed."

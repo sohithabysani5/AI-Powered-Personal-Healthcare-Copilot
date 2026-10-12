@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173"
 
     DATABASE_URL: str = "sqlite:///./health_copilot.db"
+    SUPABASE_DB_URL: str = ""
     UPLOAD_DIR: str = "./uploads"
     MAX_UPLOAD_SIZE_BYTES: int = 20 * 1024 * 1024  # 20 MB
 
@@ -52,11 +53,23 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> List[str]:
         origins = [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
-        return [origin if "://" in origin else f"https://{origin}" for origin in origins]
+        result = []
+        for origin in origins:
+            if origin == "*":
+                result.append("*")
+            elif "://" in origin:
+                result.append(origin)
+            else:
+                result.append(f"https://{origin}")
+        return result
 
     @property
     def provider_order(self) -> List[str]:
         return [p.strip().lower() for p in self.AI_PROVIDER_ORDER.split(",") if p.strip()]
+
+    @property
+    def active_database_url(self) -> str:
+        return self.SUPABASE_DB_URL or self.DATABASE_URL
 
 
 settings = Settings()

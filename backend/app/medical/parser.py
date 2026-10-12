@@ -10,61 +10,51 @@ COMMON_LAB_PATTERNS = [
         "name": "Hemoglobin",
         "pattern": r"(?:Hemoglobin|HGB|Hb)\s*[:\-]?\s*([0-9]+\.?[0-9]*)\s*(g/dL|gm/dl|g/l)?(?:\s*\(?([0-9]+\.?[0-9]*\s*[-–]\s*[0-9]+\.?[0-9]*)\)?)?",
         "unit": "g/dL",
-        "standard_ref": "12.0 - 16.0"
     },
     {
         "name": "Fasting Blood Glucose",
         "pattern": r"(?:Fasting\s+Blood\s+(?:Sugar|Glucose)|FBS|Glucose\s*\(?Fasting\)?)\s*[:\-]?\s*([0-9]+\.?[0-9]*)\s*(mg/dL|mg/dl|mmol/L)?(?:\s*\(?([0-9]+\.?[0-9]*\s*[-–]\s*[0-9]+\.?[0-9]*)\)?)?",
         "unit": "mg/dL",
-        "standard_ref": "70 - 100"
     },
     {
         "name": "Post Prandial Blood Glucose",
         "pattern": r"(?:Post\s+Prandial\s+(?:Sugar|Glucose)|PPBS|Glucose\s*\(?PP\)?)\s*[:\-]?\s*([0-9]+\.?[0-9]*)\s*(mg/dL|mg/dl|mmol/L)?(?:\s*\(?([0-9]+\.?[0-9]*\s*[-–]\s*[0-9]+\.?[0-9]*)\)?)?",
         "unit": "mg/dL",
-        "standard_ref": "100 - 140"
     },
     {
         "name": "HbA1c",
         "pattern": r"(?:HbA1c|Glycated\s+Hemoglobin)\s*[:\-]?\s*([0-9]+\.?[0-9]*)\s*(%)?(?:\s*\(?([0-9]+\.?[0-9]*\s*[-–]\s*[0-9]+\.?[0-9]*)\)?)?",
         "unit": "%",
-        "standard_ref": "4.0 - 5.6"
     },
     {
         "name": "Total Cholesterol",
         "pattern": r"(?:Total\s+Cholesterol|Cholesterol\s+Total)\s*[:\-]?\s*([0-9]+\.?[0-9]*)\s*(mg/dL|mg/dl)?(?:\s*\(?([0-9]+\.?[0-9]*\s*[-–]\s*[0-9]+\.?[0-9]*)\)?)?",
         "unit": "mg/dL",
-        "standard_ref": "125 - 200"
     },
     {
         "name": "Serum Creatinine",
         "pattern": r"(?:Serum\s+Creatinine|Creatinine)\s*[:\-]?\s*([0-9]+\.?[0-9]*)\s*(mg/dL|mg/dl)?(?:\s*\(?([0-9]+\.?[0-9]*\s*[-–]\s*[0-9]+\.?[0-9]*)\)?)?",
         "unit": "mg/dL",
-        "standard_ref": "0.6 - 1.2"
     },
     {
         "name": "Blood Urea Nitrogen",
         "pattern": r"(?:BUN|Blood\s+Urea|Urea)\s*[:\-]?\s*([0-9]+\.?[0-9]*)\s*(mg/dL|mg/dl)?(?:\s*\(?([0-9]+\.?[0-9]*\s*[-–]\s*[0-9]+\.?[0-9]*)\)?)?",
         "unit": "mg/dL",
-        "standard_ref": "7 - 20"
     },
     {
         "name": "WBC Count",
         "pattern": r"(?:Total\s+Leukocyte\s+Count|TLC|WBC\s+Count|White\s+Blood\s+Cells)\s*[:\-]?\s*([0-9]+\.?[0-9]*)\s*(cells/cumm|/cumm|K/uL)?(?:\s*\(?([0-9,]+\s*[-–]\s*[0-9,]+)\)?)?",
         "unit": "/cumm",
-        "standard_ref": "4000 - 11000"
     },
     {
         "name": "Platelet Count",
         "pattern": r"(?:Platelet\s+Count|Platelets)\s*[:\-]?\s*([0-9]+\.?[0-9]*)\s*(lakhs?/cumm|lakh/cumm|/cumm|K/uL)?(?:\s*\(?([0-9\.]+\s*[-–]\s*[0-9\.]+)\)?)?",
         "unit": "lakh/cumm",
-        "standard_ref": "1.5 - 4.5"
     },
     {
         "name": "Thyroid Stimulating Hormone (TSH)",
         "pattern": r"(?:TSH|Thyroid\s+Stimulating\s+Hormone)\s*[:\-]?\s*([0-9]+\.?[0-9]*)\s*(uIU/mL|uIU/ml|mIU/L)?(?:\s*\(?([0-9]+\.?[0-9]*\s*[-–]\s*[0-9]+\.?[0-9]*)\)?)?",
         "unit": "uIU/mL",
-        "standard_ref": "0.4 - 4.5"
     }
 ]
 
@@ -132,10 +122,10 @@ def parse_lab_observations(text: str) -> List[Dict[str, Any]]:
                 num_val = None
 
             unit = m.group(2) if len(m.groups()) >= 2 and m.group(2) else item["unit"]
-            ref_range = m.group(3) if len(m.groups()) >= 3 and m.group(3) else item["standard_ref"]
+            ref_range = m.group(3) if len(m.groups()) >= 3 and m.group(3) else None
             
             # Determine flag if ref_range is available
-            flag = "Normal"
+            flag = "Not assessed" if ref_range is None else "Normal"
             if num_val is not None and ref_range:
                 nums = re.findall(r"([0-9]+\.?[0-9]*)", ref_range)
                 if len(nums) >= 2:

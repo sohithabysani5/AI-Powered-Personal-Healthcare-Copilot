@@ -4,24 +4,24 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    region: singapore
-    plan: starter
+    region: oregon
+    plan: free
     healthCheckPath: /healthz
-    disk:
-      name: health-copilot-files
-      mountPath: /var/data
-      sizeGB: 10
+    # Note: On Render Free tier, persistent disks are not supported.
+    # To enable persistent storage on Render, change 'plan: starter' and uncomment the disk block:
+    # disk:
+    #   name: health-copilot-files
+    #   mountPath: /var/data
+    #   sizeGB: 10
     envVars:
       - key: APP_ENV
         value: production
       - key: SECRET_KEY
         generateValue: true
-      - key: DATABASE_URL
-        fromDatabase:
-          name: health-copilot-db
-          property: connectionString
+      - key: SUPABASE_DB_URL
+        sync: false
       - key: UPLOAD_DIR
-        value: /var/data/uploads
+        value: /app/uploads
       - key: ALLOWED_ORIGINS
         fromService:
           type: static
@@ -47,11 +47,3 @@ services:
           type: web
           name: health-copilot-api
           property: host
-
-databases:
-  - name: health-copilot-db
-    databaseName: health_copilot
-    user: health_copilot
-    region: singapore
-    plan: basic-256mb
-    ipAllowList: []

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api';
 import { useApp } from '../context/AppContext';
 import { speakText, stopSpeech } from '../utils/voiceUtils';
+import { ReadableAnswer } from '../components/ReadableAnswer';
 import {
   FileText,
   Calendar,
@@ -323,8 +324,8 @@ export const DocumentReviewPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="prose prose-xs max-w-none text-slate-700 whitespace-pre-line text-xs leading-relaxed bg-slate-50/70 p-4 rounded-xl border border-slate-100">
-          {doc.simplified_explanation || doc.summary || 'Summary unavailable.'}
+        <div className="max-w-none bg-slate-50/70 p-4 rounded-xl border border-slate-100">
+          <ReadableAnswer text={doc.simplified_explanation || doc.summary || 'Summary unavailable.'} />
         </div>
 
         {doc.doctor_questions && doc.doctor_questions.length > 0 && (

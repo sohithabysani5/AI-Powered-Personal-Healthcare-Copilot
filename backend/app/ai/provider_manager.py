@@ -10,7 +10,8 @@ from app.ai.grok_provider import GrokProvider
 from app.ai.mistral_provider import MistralProvider
 from app.ai.gemini_provider import GeminiProvider
 from app.ai.prompts import HEALTH_EXPLAINER_SYSTEM_PROMPT, MEDICAL_QA_SYSTEM_PROMPT
-from app.medical.local_explainer import generate_deterministic_summary
+from app.ai.formatting import remove_heading_hashes
+from app.medical.local_explainer import TEST_DESCRIPTIONS, generate_deterministic_summary
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +193,7 @@ class AIProviderManager:
         if res["success"] and res["content"]:
             return {
                 "summary": fallback["summary"],
-                "explanation": res["content"],
+                "explanation": remove_heading_hashes(res["content"]),
                 "doctor_questions": fallback["doctor_questions"],
                 "flagged_items": fallback["flagged_items"],
                 "is_rule_based": False,
@@ -207,6 +208,7 @@ class AIProviderManager:
         self,
         question: str,
         user_records_context: str,
+        conversation_history: Optional[List[Dict[str, str]]] = None,
         user_consent: bool = True,
         local_only: bool = False,
         preferred_language: str = "en"
@@ -214,8 +216,14 @@ class AIProviderManager:
         """
         Answers user question grounded exclusively in their saved records.
         """
+        history_text = "\n".join(
+            f"{item['role'].title()}: {item['content']}"
+            for item in (conversation_history or [])
+            if item.get("role") in {"user", "assistant"} and item.get("content")
+        )
         user_prompt = (
             f"Patient Records Context:\n{user_records_context}\n\n"
+            f"Recent conversation:\n{history_text or 'No earlier messages.'}\n\n"
             f"Patient Question: {question}\n"
             f"Response Language: {preferred_language}"
         )
@@ -229,7 +237,7 @@ class AIProviderManager:
 
         if res["success"] and res["content"]:
             return {
-                "answer": res["content"],
+                "answer": remove_heading_hashes(res["content"]),
                 "provider_used": res["provider_used"],
                 "model_used": res["model_used"],
                 "failover_occurred": res["failover_occurred"],
@@ -241,18 +249,50 @@ class AIProviderManager:
         lower_q = question.lower()
         if any(w in lower_q for w in ["glucose", "sugar"]):
             match = next((line for line in user_records_context.splitlines() if "glucose" in line.lower() or "sugar" in line.lower()), None)
-            reply = f"Regarding blood sugar/glucose: {match if match else 'No blood glucose readings found in your records.'}\n\nFasting glucose levels between 70-100 mg/dL are typically considered normal fasting range."
+            reply = (
+                f"Your recorded blood glucose result: {match}\n\n"
+                "Glucose is the sugar your body uses for energy. Whether a result is expected depends on "
+                "the reference range printed by that laboratory and whether the sample was fasting."
+                if match else
+                "I could not find a blood glucose result in your saved records. Glucose is the sugar your "
+                "body uses for energy; upload a report if you would like me to explain a specific result."
+            )
         elif any(w in lower_q for w in ["hemoglobin", "hb", "hgb"]):
             match = next((line for line in user_records_context.splitlines() if "hemoglobin" in line.lower()), None)
-            reply = f"Regarding hemoglobin: {match if match else 'No hemoglobin records found.'}\n\nHemoglobin carries oxygen throughout your body. Normal adult ranges are generally between 12.0 - 17.0 g/dL."
+            reply = (
+                f"Your recorded hemoglobin result: {match}\n\n"
+                "Hemoglobin is the protein in red blood cells that carries oxygen. Compare the result with "
+                "the range printed on your report; ranges vary by laboratory and personal context."
+                if match else
+                "I could not find a hemoglobin result in your saved records. Hemoglobin is the protein in "
+                "red blood cells that carries oxygen; upload a report if you would like help with a specific result."
+            )
         elif any(w in lower_q for w in ["medicine", "medication", "prescription", "drug"]):
             med_lines = [l for l in user_records_context.splitlines() if "prescriptions" in l.lower() or "- " in l and ("mg" in l or "tab" in l.lower())]
-            reply = f"Your recorded medications:\n" + "\n".join(med_lines) if med_lines else "No active prescription medications recorded."
+            reply = (
+                "Your recorded active medications:\n" + "\n".join(med_lines)
+                if med_lines else "I could not find any active medications in your saved records."
+            )
+        elif any(w in lower_q for w in ["summar", "report", "lab result", "test result", "analysis"]):
+            reply = (
+                f"Here is what I found in your saved health records:\n{user_records_context[:3500]}\n\n"
+                "This summary is educational. Review report flags with your clinician."
+                if "No records currently uploaded" not in user_records_context else
+                "I could not find an uploaded medical report yet. Upload a PDF or image report and I can "
+                "summarize the extracted findings."
+            )
+        elif any(test_name.lower() in lower_q for test_name in ["thyroid stimulating hormone (tsh)", "fasting blood glucose", "post prandial blood glucose", "total cholesterol", "serum creatinine", "blood urea nitrogen", "wbc count", "platelet count", "hba1c", "hemoglobin"]):
+            test_name = next(
+                name for name in ["Thyroid Stimulating Hormone (TSH)", "Fasting Blood Glucose", "Post Prandial Blood Glucose", "Total Cholesterol", "Serum Creatinine", "Blood Urea Nitrogen", "WBC Count", "Platelet Count", "HbA1c", "Hemoglobin"]
+                if name.lower() in lower_q
+            )
+            explanation = TEST_DESCRIPTIONS.get(test_name)
+            reply = explanation or f"{test_name} is a medical measurement. Ask me about a result on an uploaded report to discuss it in context."
         else:
             reply = (
                 f"Thank you for your question: '{question}'.\n\n"
-                f"Summary from your records:\n{user_records_context[:400]}...\n\n"
-                f"Note: To enable full conversational AI understanding for any general health topic, ensure an AI API key is configured in .env."
+                "I can give a more complete general-health answer when an AI provider is available. "
+                "If you are asking about your records, try naming the test or uploading its report."
             )
 
         return {
