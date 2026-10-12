@@ -39,6 +39,8 @@ else:
 
 app.add_middleware(CORSMiddleware, **cors_kwargs)
 
+from fastapi.responses import FileResponse
+
 # Mount Routers
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(doc_router, prefix="/api/v1")
@@ -47,19 +49,43 @@ app.include_router(demo_router, prefix="/api/v1")
 app.include_router(assistant_router, prefix="/api/v1")
 
 
-@app.get("/")
-def root():
-    return {
-        "app": settings.APP_NAME,
-        "status": "online",
-        "version": "1.0.0",
-        "docs_url": "/docs"
-    }
-
-
 @app.get("/healthz")
 def health_check():
     return {
         "status": "healthy",
         "environment": settings.APP_ENV
     }
+
+
+# Detect built frontend in local or docker environment
+possible_dist_paths = [
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../frontend/dist")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../../frontend/dist")),
+    "/app/frontend/dist"
+]
+
+frontend_dist_dir = next((p for p in possible_dist_paths if os.path.isdir(p)), None)
+
+if frontend_dist_dir:
+    assets_dir = os.path.join(frontend_dist_dir, "assets")
+    if os.path.isdir(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Allow access to direct files in dist (e.g., favicon.ico, manifest.json)
+        target_file = os.path.join(frontend_dist_dir, full_path)
+        if full_path and os.path.isfile(target_file):
+            return FileResponse(target_file)
+        # Default to index.html for React client-side routing
+        return FileResponse(os.path.join(frontend_dist_dir, "index.html"))
+else:
+    @app.get("/")
+    def root():
+        return {
+            "app": settings.APP_NAME,
+            "status": "online",
+            "version": "1.0.0",
+            "docs_url": "/docs"
+        }
+
